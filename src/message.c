@@ -581,9 +581,7 @@ void qd_message_free(qd_message_t *in_msg)
 
     qd_message_content_t *content = msg->content;
 
-    sys_mutex_lock(content->lock);
-    rc = --content->ref_count;
-    sys_mutex_unlock(content->lock);
+    rc = __sync_sub_and_fetch(&content->ref_count, 1);
 
     if (rc == 0) {
         if (content->parsed_message_annotations)
@@ -621,9 +619,7 @@ qd_message_t *qd_message_copy(qd_message_t *in_msg)
 
     copy->content = content;
 
-    sys_mutex_lock(content->lock);
-    content->ref_count++;
-    sys_mutex_unlock(content->lock);
+    __sync_fetch_and_add(&content->ref_count, 1);
 
     return (qd_message_t*) copy;
 }
