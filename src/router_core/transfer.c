@@ -264,9 +264,9 @@ static void qdr_delivery_decref_internal(qdr_delivery_t *delivery, bool lock_hel
     bool              delete = false;
     
     if (!!conn) {
-        int delivery = __sync_fetch_and_sub(&delivery->ref_count, 1);
-        assert(delivery > 0);
-        delete = (delivery - 1) == 0;
+        int ref_count = __sync_fetch_and_sub(&delivery->ref_count, 1);
+        assert(ref_count > 0);
+        delete = (ref_count - 1) == 0;
     }
 
     if (delete) {
