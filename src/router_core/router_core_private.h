@@ -24,6 +24,7 @@
 #include <qpid/dispatch/threading.h>
 #include <qpid/dispatch/log.h>
 #include <memory.h>
+#include <stdatomic.h>
 
 typedef struct qdr_address_t         qdr_address_t;
 typedef struct qdr_address_config_t  qdr_address_config_t;
@@ -200,7 +201,7 @@ typedef enum {
 struct qdr_delivery_t {
     DEQ_LINKS(qdr_delivery_t);
     void                *context;
-    int                  ref_count;
+    atomic_int           ref_count;
     qdr_link_t          *link;
     qdr_delivery_t      *peer;
     qd_message_t        *msg;
