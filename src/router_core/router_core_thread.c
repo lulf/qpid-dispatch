@@ -42,53 +42,48 @@ static void qdr_activate_connections_CT(qdr_core_t *core)
     }
 }
 
-static inline bool on_message(uint8_t * const buffer, void * const context)
+static inline bool on_dequeue(uint8_t * const buffer, void * const context)
 {
-    qdr_action_t ** action_pptr = (qdr_action_t **)context;
+    qdr_core_t * core = (qdr_core_t *)context;
+
     uint64_t * valueptr = (uint64_t *)buffer;
-    *action_pptr = (qdr_action_t *)*valueptr;
-    return true;
-}
+    qdr_action_t *action = (qdr_action_t *)*valueptr;
 
-static inline qdr_action_t * dequeue_action(qdr_core_t * core)
-{
-    qdr_action_t *action;
-    uint32_t read = fixed_size_stream_read(&core->action_list, on_message, 1, &action);
-
-    if (read == 0) {
-        return NULL;
-    } else {
-        return action;
+    if (action->label) {
+        qd_log(core->log, QD_LOG_TRACE, "Core action '%s'%s", action->label, core->running ? "" : " (discard)");
     }
+    action->action_handler(core, action, !core->running);
+    free_qdr_action_t(action);
+    return true;
 }
 
 void *router_core_thread(void *arg)
 {
     qdr_core_t        *core = (qdr_core_t*) arg;
-    qdr_action_t      *action;
 
     qdr_forwarder_setup_CT(core);
     qdr_route_table_setup_CT(core);
     qdr_agent_setup_CT(core);
+
+    struct timespec req;
+    req.tv_sec = 0;
+    req.tv_nsec = 100000;
 
     qd_log(core->log, QD_LOG_INFO, "Router Core thread running. %s/%s", core->router_area, core->router_id);
     while (core->running) {
         //
         // Process and free all of the action items in the list
         //
-        action = dequeue_action(core);
-        while (action) {
-            if (action->label)
-                qd_log(core->log, QD_LOG_TRACE, "Core action '%s'%s", action->label, core->running ? "" : " (discard)");
-            action->action_handler(core, action, !core->running);
-            free_qdr_action_t(action);
-            action = dequeue_action(core);
-        }
+        uint32_t read = fixed_size_stream_read(&core->action_list, on_dequeue, 16 * 1024, core);
 
         //
         // Activate all connections that were flagged for activation during the above processing
         //
         qdr_activate_connections_CT(core);
+
+        if (read == 0) {
+            nanosleep(&req, NULL);
+        }
     }
 
     qd_log(core->log, QD_LOG_INFO, "Router Core thread exited");
