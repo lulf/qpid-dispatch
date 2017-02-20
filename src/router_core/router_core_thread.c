@@ -18,6 +18,7 @@
  */
 
 #include "router_core_private.h"
+#include <time.h>
 
 /**
  * Creates a thread that is dedicated to managing and using the routing table.
@@ -53,10 +54,13 @@ static inline qdr_action_t * dequeue_action(qdr_core_t * core)
 {
     bool done = false;
     qdr_action_t *action;
+    struct timespec req;
+    req.tv_sec = 0;
+    req.tv_nsec = 100000;
     while (!done) {
         uint32_t read = fixed_size_stream_read(&core->action_list, on_message, 1, &action);
         if (read == 0) {
-            __asm__ __volatile__("pause;");
+            nanosleep(&req, NULL);
         } else {
             done = true;
         }
@@ -79,13 +83,11 @@ void *router_core_thread(void *arg)
         // Process and free all of the action items in the list
         //
         action = dequeue_action(core);
-        while (action) {
-            if (action->label)
-                qd_log(core->log, QD_LOG_TRACE, "Core action '%s'%s", action->label, core->running ? "" : " (discard)");
-            action->action_handler(core, action, !core->running);
-            free_qdr_action_t(action);
-            action = dequeue_action(core);
-        }
+        if (action->label)
+            qd_log(core->log, QD_LOG_TRACE, "Core action '%s'%s", action->label, core->running ? "" : " (discard)");
+        action->action_handler(core, action, !core->running);
+        free_qdr_action_t(action);
+        action = dequeue_action(core);
 
         //
         // Activate all connections that were flagged for activation during the above processing

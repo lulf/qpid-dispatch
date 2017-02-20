@@ -20,6 +20,7 @@
 #include "router_core_private.h"
 #include <sys/user.h>
 #include <stdio.h>
+#include <time.h>
 
 ALLOC_DEFINE(qdr_address_t);
 ALLOC_DEFINE(qdr_address_config_t);
@@ -251,9 +252,12 @@ qdr_action_t *qdr_action(qdr_action_handler_t action_handler, const char *label)
 
 void qdr_action_enqueue(qdr_core_t *core, qdr_action_t *action)
 {
+    struct timespec req;
+    req.tv_sec = 0;
+    req.tv_nsec = 100000;
     uint64_t * message_content = NULL;
     while (!fixed_size_stream_try_claim(&core->action_list, (uint8_t **)&message_content)) {
-        __asm__ __volatile__("pause;");
+        nanosleep(&req, NULL);
     }
     *message_content = (uint64_t)action;
     fixed_size_stream_commit_claim((uint8_t *)message_content);
