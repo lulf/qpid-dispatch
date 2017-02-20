@@ -90,6 +90,7 @@ set(qpid_dispatch_SOURCES
   server.c
   timer.c
   trace_mask.c
+  queue/fixed_size_stream.c
   )
 
 if(USE_LIBWEBSOCKETS)

@@ -41,11 +41,32 @@ static void qdr_activate_connections_CT(qdr_core_t *core)
     }
 }
 
+static inline bool on_message(uint8_t * const buffer, void * const context)
+{
+    qdr_action_t ** action_pptr = (qdr_action_t **)context;
+    uint64_t * valueptr = (uint64_t *)buffer;
+    *action_pptr = (qdr_action_t *)*valueptr;
+    return true;
+}
+
+static inline qdr_action_t * dequeue_action(qdr_core_t * core)
+{
+    bool done = false;
+    qdr_action_t *action;
+    while (!done) {
+        uint32_t read = fixed_size_stream_read(&core->action_list, on_message, 1, &action);
+        if (read == 0) {
+            __asm__ __volatile__("pause;");
+        } else {
+            done = true;
+        }
+    }
+    return action;
+}
 
 void *router_core_thread(void *arg)
 {
     qdr_core_t        *core = (qdr_core_t*) arg;
-    qdr_action_list_t  action_list;
     qdr_action_t      *action;
 
     qdr_forwarder_setup_CT(core);
@@ -55,34 +76,15 @@ void *router_core_thread(void *arg)
     qd_log(core->log, QD_LOG_INFO, "Router Core thread running. %s/%s", core->router_area, core->router_id);
     while (core->running) {
         //
-        // Use the lock only to protect the condition variable and the action list
-        //
-        sys_mutex_lock(core->action_lock);
-
-        //
-        // Block on the condition variable when there is no action to do
-        //
-        while (core->running && DEQ_IS_EMPTY(core->action_list))
-            sys_cond_wait(core->action_cond, core->action_lock);
-
-        //
-        // Move the entire action list to a private list so we can process it without
-        // holding the lock
-        //
-        DEQ_MOVE(core->action_list, action_list);
-        sys_mutex_unlock(core->action_lock);
-
-        //
         // Process and free all of the action items in the list
         //
-        action = DEQ_HEAD(action_list);
+        action = dequeue_action(core);
         while (action) {
-            DEQ_REMOVE_HEAD(action_list);
             if (action->label)
                 qd_log(core->log, QD_LOG_TRACE, "Core action '%s'%s", action->label, core->running ? "" : " (discard)");
             action->action_handler(core, action, !core->running);
             free_qdr_action_t(action);
-            action = DEQ_HEAD(action_list);
+            action = dequeue_action(core);
         }
 
         //

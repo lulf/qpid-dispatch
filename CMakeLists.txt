@@ -129,7 +129,7 @@ add_compile_options(-Wall)
 if (NOT CMAKE_SYSTEM_NAME STREQUAL SunOS)
 add_compile_options(-Werror)
 endif (NOT CMAKE_SYSTEM_NAME STREQUAL SunOS)
-add_compile_options(-std=gnu99)
+add_compile_options(-std=gnu11)
 set(CATCH_UNDEFINED "-Wl,-z,defs")
 
 ##

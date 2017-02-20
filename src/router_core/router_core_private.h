@@ -24,6 +24,7 @@
 #include <qpid/dispatch/threading.h>
 #include <qpid/dispatch/atomic.h>
 #include <qpid/dispatch/log.h>
+#include "../queue/fixed_size_stream.h"
 #include <memory.h>
 
 typedef struct qdr_address_t         qdr_address_t;
@@ -150,7 +151,7 @@ struct qdr_action_t {
 };
 
 ALLOC_DECLARE(qdr_action_t);
-DEQ_DECLARE(qdr_action_t, qdr_action_list_t);
+typedef struct fixed_size_stream_t qdr_action_list_t;
 
 #define QDR_AGENT_MAX_COLUMNS 64
 #define QDR_AGENT_COLUMN_NULL (QDR_AGENT_MAX_COLUMNS + 1)
