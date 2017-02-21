@@ -80,6 +80,7 @@ void *router_core_thread(void *arg)
         qdr_activate_connections_CT(core);
 
         if (read == 0) {
+            __asm__ __volatile__("pause;");
             nanosleep(&req, NULL);
         }
     }
