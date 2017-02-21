@@ -43,7 +43,7 @@ void qdr_delivery_copy_extension_state(qdr_delivery_t *src, qdr_delivery_t *dest
 qdr_delivery_t *qdr_link_deliver(qdr_link_t *link, qd_message_t *msg, qd_iterator_t *ingress,
                                  bool settled, qd_bitmask_t *link_exclusion)
 {
-    qdr_action_t   *action = qdr_action(qdr_link_deliver_CT, "link_deliver");
+    qdr_action_t   *action = qdr_action(link->core, qdr_link_deliver_CT, "link_deliver");
     qdr_delivery_t *dlv    = new_qdr_delivery_t();
 
     ZERO(dlv);
@@ -58,7 +58,7 @@ qdr_delivery_t *qdr_link_deliver(qdr_link_t *link, qd_message_t *msg, qd_iterato
     dlv->error          = 0;
 
     action->args.connection.delivery = dlv;
-    qdr_action_enqueue(link->core, action);
+    qdr_action_enqueue(action);
     return dlv;
 }
 
@@ -67,7 +67,7 @@ qdr_delivery_t *qdr_link_deliver_to(qdr_link_t *link, qd_message_t *msg,
                                     qd_iterator_t *ingress, qd_iterator_t *addr,
                                     bool settled, qd_bitmask_t *link_exclusion)
 {
-    qdr_action_t   *action = qdr_action(qdr_link_deliver_CT, "link_deliver");
+    qdr_action_t   *action = qdr_action(link->core, qdr_link_deliver_CT, "link_deliver");
     qdr_delivery_t *dlv    = new_qdr_delivery_t();
 
     ZERO(dlv);
@@ -82,7 +82,7 @@ qdr_delivery_t *qdr_link_deliver_to(qdr_link_t *link, qd_message_t *msg,
     dlv->error          = 0;
 
     action->args.connection.delivery = dlv;
-    qdr_action_enqueue(link->core, action);
+    qdr_action_enqueue(action);
     return dlv;
 }
 
@@ -94,7 +94,7 @@ qdr_delivery_t *qdr_link_deliver_to_routed_link(qdr_link_t *link, qd_message_t *
     if (tag_length > 32)
         return 0;
     
-    qdr_action_t   *action = qdr_action(qdr_link_deliver_CT, "link_deliver");
+    qdr_action_t   *action = qdr_action(link->core, qdr_link_deliver_CT, "link_deliver");
     qdr_delivery_t *dlv    = new_qdr_delivery_t();
 
     ZERO(dlv);
@@ -110,7 +110,7 @@ qdr_delivery_t *qdr_link_deliver_to_routed_link(qdr_link_t *link, qd_message_t *
     action->args.connection.delivery = dlv;
     action->args.connection.tag_length = tag_length;
     memcpy(action->args.connection.tag, tag, tag_length);
-    qdr_action_enqueue(link->core, action);
+    qdr_action_enqueue(action);
     return dlv;
 }
 
@@ -177,7 +177,7 @@ void qdr_link_process_deliveries(qdr_core_t *core, qdr_link_t *link, int credit)
 
 void qdr_link_flow(qdr_core_t *core, qdr_link_t *link, int credit, bool drain_mode)
 {
-    qdr_action_t *action = qdr_action(qdr_link_flow_CT, "link_flow");
+    qdr_action_t *action = qdr_action(core, qdr_link_flow_CT, "link_flow");
 
     //
     // Compute the number of credits now available that we haven't yet given
@@ -193,46 +193,46 @@ void qdr_link_flow(qdr_core_t *core, qdr_link_t *link, int credit, bool drain_mo
     action->args.connection.credit = credit;
     action->args.connection.drain  = drain_mode;
 
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_link_check_credit(qdr_core_t *core, qdr_link_t *link)
 {
-    qdr_action_t *action = qdr_action(qdr_link_check_credit_CT, "link_check_credit");
+    qdr_action_t *action = qdr_action(core, qdr_link_check_credit_CT, "link_check_credit");
     action->args.connection.link = link;
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_send_to1(qdr_core_t *core, qd_message_t *msg, qd_iterator_t *addr, bool exclude_inprocess, bool control)
 {
-    qdr_action_t *action = qdr_action(qdr_send_to_CT, "send_to");
+    qdr_action_t *action = qdr_action(core, qdr_send_to_CT, "send_to");
     action->args.io.address           = qdr_field_from_iter(addr);
     action->args.io.message           = qd_message_copy(msg);
     action->args.io.exclude_inprocess = exclude_inprocess;
     action->args.io.control           = control;
 
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_send_to2(qdr_core_t *core, qd_message_t *msg, const char *addr, bool exclude_inprocess, bool control)
 {
-    qdr_action_t *action = qdr_action(qdr_send_to_CT, "send_to");
+    qdr_action_t *action = qdr_action(core, qdr_send_to_CT, "send_to");
     action->args.io.address           = qdr_field(addr);
     action->args.io.message           = qd_message_copy(msg);
     action->args.io.exclude_inprocess = exclude_inprocess;
     action->args.io.control           = control;
 
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_delivery_update_disposition(qdr_core_t *core, qdr_delivery_t *delivery, uint64_t disposition,
                                      bool settled, qdr_error_t *error, pn_data_t *ext_state, bool ref_given)
 {
-    qdr_action_t *action = qdr_action(qdr_update_delivery_CT, "update_delivery");
+    qdr_action_t *action = qdr_action(core, qdr_update_delivery_CT, "update_delivery");
     action->args.delivery.delivery    = delivery;
     action->args.delivery.disposition = disposition;
     action->args.delivery.settled     = settled;
@@ -249,7 +249,7 @@ void qdr_delivery_update_disposition(qdr_core_t *core, qdr_delivery_t *delivery,
     if (!ref_given)
         qdr_delivery_incref(delivery);
 
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
@@ -280,9 +280,9 @@ void qdr_delivery_decref(qdr_core_t *core, qdr_delivery_t *delivery)
         // The delivery deletion must occur inside the core thread.
         // Queue up an action to do the work.
         //
-        qdr_action_t *action = qdr_action(qdr_delete_delivery_CT, "delete_delivery");
+        qdr_action_t *action = qdr_action(core, qdr_delete_delivery_CT, "delete_delivery");
         action->args.delivery.delivery = delivery;
-        qdr_action_enqueue(core, action);
+        qdr_action_enqueue(action);
     }
 }
 

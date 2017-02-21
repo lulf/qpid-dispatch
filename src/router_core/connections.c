@@ -69,7 +69,7 @@ qdr_connection_t *qdr_connection_opened(qdr_core_t            *core,
                                         const char            *vhost,
                                         qdr_connection_info_t *connection_info)
 {
-    qdr_action_t     *action = qdr_action(qdr_connection_opened_CT, "connection_opened");
+    qdr_action_t     *action = qdr_action(core, qdr_connection_opened_CT, "connection_opened");
     qdr_connection_t *conn   = new_qdr_connection_t();
 
     ZERO(conn);
@@ -99,7 +99,7 @@ qdr_connection_t *qdr_connection_opened(qdr_core_t            *core,
     action->args.connection.conn             = conn;
     action->args.connection.connection_label = qdr_field(label);
     action->args.connection.container_id     = qdr_field(remote_container_id);
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 
     return conn;
 }
@@ -107,9 +107,9 @@ qdr_connection_t *qdr_connection_opened(qdr_core_t            *core,
 
 void qdr_connection_closed(qdr_connection_t *conn)
 {
-    qdr_action_t *action = qdr_action(qdr_connection_closed_CT, "connection_closed");
+    qdr_action_t *action = qdr_action(conn->core, qdr_connection_closed_CT, "connection_closed");
     action->args.connection.conn = conn;
-    qdr_action_enqueue(conn->core, action);
+    qdr_action_enqueue(action);
 }
 
 
@@ -356,7 +356,7 @@ qdr_link_t *qdr_link_first_attach(qdr_connection_t *conn,
                                   qdr_terminus_t   *target,
                                   const char       *name)
 {
-    qdr_action_t   *action         = qdr_action(qdr_link_inbound_first_attach_CT, "link_first_attach");
+    qdr_action_t   *action         = qdr_action(conn->core, qdr_link_inbound_first_attach_CT, "link_first_attach");
     qdr_link_t     *link           = new_qdr_link_t();
     qdr_terminus_t *local_terminus = dir == QD_OUTGOING ? source : target;
 
@@ -384,7 +384,7 @@ qdr_link_t *qdr_link_first_attach(qdr_connection_t *conn,
     action->args.connection.dir    = dir;
     action->args.connection.source = source;
     action->args.connection.target = target;
-    qdr_action_enqueue(conn->core, action);
+    qdr_action_enqueue(action);
 
     return link;
 }
@@ -392,24 +392,24 @@ qdr_link_t *qdr_link_first_attach(qdr_connection_t *conn,
 
 void qdr_link_second_attach(qdr_link_t *link, qdr_terminus_t *source, qdr_terminus_t *target)
 {
-    qdr_action_t *action = qdr_action(qdr_link_inbound_second_attach_CT, "link_second_attach");
+    qdr_action_t *action = qdr_action(link->core, qdr_link_inbound_second_attach_CT, "link_second_attach");
 
     action->args.connection.link   = link;
     action->args.connection.source = source;
     action->args.connection.target = target;
-    qdr_action_enqueue(link->core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_link_detach(qdr_link_t *link, qd_detach_type_t dt, qdr_error_t *error)
 {
-    qdr_action_t *action = qdr_action(qdr_link_inbound_detach_CT, "link_detach");
+    qdr_action_t *action = qdr_action(link->core, qdr_link_inbound_detach_CT, "link_detach");
 
     action->args.connection.conn   = link->conn;
     action->args.connection.link   = link;
     action->args.connection.error  = error;
     action->args.connection.dt     = dt;
-    qdr_action_enqueue(link->core, action);
+    qdr_action_enqueue(action);
 }
 
 

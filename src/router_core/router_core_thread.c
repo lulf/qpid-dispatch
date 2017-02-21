@@ -46,14 +46,12 @@ static inline bool on_dequeue(uint8_t * const buffer, void * const context)
 {
     qdr_core_t * core = (qdr_core_t *)context;
 
-    uint64_t * valueptr = (uint64_t *)buffer;
-    qdr_action_t *action = (qdr_action_t *)*valueptr;
+    qdr_action_t *action = (qdr_action_t *)buffer;
 
     if (action->label) {
         qd_log(core->log, QD_LOG_TRACE, "Core action '%s'%s", action->label, core->running ? "" : " (discard)");
     }
     action->action_handler(core, action, !core->running);
-    free_qdr_action_t(action);
     return true;
 }
 

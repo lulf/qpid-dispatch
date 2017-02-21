@@ -635,8 +635,8 @@ void qdr_management_agent_on_message(void *context, qd_message_t *msg, int link_
 void  qdr_route_table_setup_CT(qdr_core_t *core);
 void  qdr_agent_setup_CT(qdr_core_t *core);
 void  qdr_forwarder_setup_CT(qdr_core_t *core);
-qdr_action_t *qdr_action(qdr_action_handler_t action_handler, const char *label);
-void qdr_action_enqueue(qdr_core_t *core, qdr_action_t *action);
+qdr_action_t *qdr_action(qdr_core_t *core, qdr_action_handler_t action_handler, const char *label);
+void qdr_action_enqueue(qdr_action_t *action);
 void qdr_link_issue_credit_CT(qdr_core_t *core, qdr_link_t *link, int credit, bool drain);
 void qdr_addr_start_inlinks_CT(qdr_core_t *core, qdr_address_t *addr);
 void qdr_delivery_push_CT(qdr_core_t *core, qdr_delivery_t *dlv);

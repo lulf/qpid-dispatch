@@ -56,9 +56,9 @@ qdr_core_t *qdr_core(qd_dispatch_t *qd, qd_router_mode_t mode, const char *area,
     // Set up the threading support
     //
     core->running     = true;
-    index_t buffer_capacity = fixed_size_stream_capacity(16 * 1024, 8, 4);
+    index_t buffer_capacity = fixed_size_stream_capacity(128 * 1024, sizeof(qdr_action_t), 4);
     uint8_t * buffer = aligned_alloc(PAGE_SIZE, buffer_capacity);
-    new_fixed_size_stream(buffer, &core->action_list, 16 * 1024, 8, 4);
+    new_fixed_size_stream(buffer, &core->action_list, 128 * 1024, sizeof(qdr_action_t), 4);
 
     core->work_lock = sys_mutex();
     DEQ_INIT(core->work_list);
@@ -240,24 +240,24 @@ char *qdr_field_copy(qdr_field_t *field)
 }
 
 
-qdr_action_t *qdr_action(qdr_action_handler_t action_handler, const char *label)
+qdr_action_t *qdr_action(qdr_core_t * core, qdr_action_handler_t action_handler, const char *label)
 {
-    qdr_action_t *action = new_qdr_action_t();
+
+    qdr_action_t * action = NULL;
+    while (!fixed_size_stream_try_claim(&core->action_list, (uint8_t **)&action)) {
+        __asm__ __volatile__("pause;");
+    }
     ZERO(action);
     action->action_handler = action_handler;
     action->label          = label;
+
     return action;
 }
 
 
-void qdr_action_enqueue(qdr_core_t *core, qdr_action_t *action)
+void qdr_action_enqueue(qdr_action_t *action)
 {
-    uint64_t * message_content = NULL;
-    while (!fixed_size_stream_try_claim(&core->action_list, (uint8_t **)&message_content)) {
-        __asm__ __volatile__("pause;");
-    }
-    *message_content = (uint64_t)action;
-    fixed_size_stream_commit_claim((uint8_t *)message_content);
+    fixed_size_stream_commit_claim((uint8_t *)action);
 }
 
 
