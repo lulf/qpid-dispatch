@@ -146,6 +146,7 @@ static qd_iterator_t *router_annotate_message(qd_router_t       *router,
             // the message has already passed through.
             //
             *link_exclusions = qd_tracemask_create(router->tracemask, trace);
+            qd_bitmask_set_all(*link_exclusions);
 
             //
             // Append this router's ID to the trace.
