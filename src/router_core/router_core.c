@@ -56,9 +56,9 @@ qdr_core_t *qdr_core(qd_dispatch_t *qd, qd_router_mode_t mode, const char *area,
     // Set up the threading support
     //
     core->running     = true;
-    index_t buffer_capacity = fixed_size_stream_capacity(128 * 1024, sizeof(qdr_action_t), 4);
+    index_t buffer_capacity = fixed_size_stream_capacity(128 * 1024, sizeof(qdr_action_t) + 4, 4);
     uint8_t * buffer = aligned_alloc(PAGE_SIZE, buffer_capacity);
-    new_fixed_size_stream(buffer, &core->action_list, 128 * 1024, sizeof(qdr_action_t), 4);
+    new_fixed_size_stream(buffer, &core->action_list, 128 * 1024, sizeof(qdr_action_t) + 4, 4);
 
     core->work_lock = sys_mutex();
     DEQ_INIT(core->work_list);
