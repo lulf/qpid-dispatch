@@ -240,7 +240,7 @@ static void AMQP_rx_handler(void* context, qd_link_t *link, pn_delivery_t *pnd)
     // is closing.
     //
     if (!rlink) {
-        qd_message_free(msg);
+        qd_message_decref(msg);
         return;
     }
 
@@ -310,7 +310,7 @@ static void AMQP_rx_handler(void* context, qd_link_t *link, pn_delivery_t *pnd)
                         pn_link_flow(pn_link, 1);
                         pn_delivery_update(pnd, PN_REJECTED);
                         pn_delivery_settle(pnd);
-                        qd_message_free(msg);
+                        qd_message_decref(msg);
                         qd_iterator_free(userid_iter);
                         return;
                     }
@@ -405,7 +405,7 @@ static void AMQP_rx_handler(void* context, qd_link_t *link, pn_delivery_t *pnd)
             pn_link_flow(pn_link, 1);
             pn_delivery_update(pnd, PN_REJECTED);
             pn_delivery_settle(pnd);
-            qd_message_free(msg);
+            qd_message_decref(msg);
         }
 
         //
@@ -429,7 +429,7 @@ static void AMQP_rx_handler(void* context, qd_link_t *link, pn_delivery_t *pnd)
         pn_link_flow(pn_link, 1);
         pn_delivery_update(pnd, PN_REJECTED);
         pn_delivery_settle(pnd);
-        qd_message_free(msg);
+        qd_message_decref(msg);
     }
 }
 

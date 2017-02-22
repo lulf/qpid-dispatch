@@ -613,7 +613,7 @@ static PyObject *qd_python_send(PyObject *self, PyObject *args)
             Py_DECREF(address);
         }
         qd_compose_free(field);
-        qd_message_free(msg);
+        qd_message_decref(msg);
         Py_RETURN_NONE;
     }
     if (!PyErr_Occurred())

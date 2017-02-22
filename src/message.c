@@ -561,7 +561,6 @@ qd_message_t *qd_message()
 
     ZERO(msg->content);
     msg->content->lock = sys_mutex();
-    sys_atomic_init(&msg->content->ref_count, 1);
     msg->content->parse_depth = QD_DEPTH_NONE;
     msg->content->parsed_message_annotations = 0;
 
@@ -569,21 +568,19 @@ qd_message_t *qd_message()
 }
 
 
-void qd_message_free(qd_message_t *in_msg)
+void qd_message_decref(qd_message_t *in_msg)
 {
     if (!in_msg) return;
     uint32_t rc;
     qd_message_pvt_t     *msg     = (qd_message_pvt_t*) in_msg;
 
-    qd_buffer_list_free_buffers(&msg->ma_to_override);
-    qd_buffer_list_free_buffers(&msg->ma_trace);
-    qd_buffer_list_free_buffers(&msg->ma_ingress);
-
-    qd_message_content_t *content = msg->content;
-
-    rc = sys_atomic_dec(&content->ref_count) - 1;
-
+    rc = sys_atomic_dec(&msg->ref_count) - 1;
     if (rc == 0) {
+        qd_buffer_list_free_buffers(&msg->ma_to_override);
+        qd_buffer_list_free_buffers(&msg->ma_trace);
+        qd_buffer_list_free_buffers(&msg->ma_ingress);
+
+        qd_message_content_t *content = msg->content;
         if (content->parsed_message_annotations)
             qd_parse_free(content->parsed_message_annotations);
 
@@ -596,34 +593,15 @@ void qd_message_free(qd_message_t *in_msg)
 
         sys_mutex_free(content->lock);
         free_qd_message_content_t(content);
+        free_qd_message_t((qd_message_t*) msg);
     }
-
-    free_qd_message_t((qd_message_t*) msg);
 }
 
-
-qd_message_t *qd_message_copy(qd_message_t *in_msg)
+qd_message_t *qd_message_incref(qd_message_t *in_msg)
 {
     qd_message_pvt_t     *msg     = (qd_message_pvt_t*) in_msg;
-    qd_message_content_t *content = msg->content;
-    qd_message_pvt_t     *copy    = (qd_message_pvt_t*) new_qd_message_t();
-
-    if (!copy)
-        return 0;
-
-    DEQ_ITEM_INIT(copy);
-    qd_buffer_list_clone(&copy->ma_to_override, &msg->ma_to_override);
-    qd_buffer_list_clone(&copy->ma_trace, &msg->ma_trace);
-    qd_buffer_list_clone(&copy->ma_ingress, &msg->ma_ingress);
-    copy->ma_phase = msg->ma_phase;
-
-    copy->content = content;
-
-    qd_message_message_annotations((qd_message_t*) copy);
-
-    sys_atomic_inc(&content->ref_count);
-
-    return (qd_message_t*) copy;
+    sys_atomic_inc(&msg->ref_count);
+    return in_msg;
 }
 
 

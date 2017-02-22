@@ -116,20 +116,20 @@ typedef enum {
 qd_message_t *qd_message(void);
 
 /**
- * Free a message reference.  If this is the last reference to the message, free the
- * message as well.
- *
- * @param msg A pointer to a qd_message_t that is no longer needed.
- */
-void qd_message_free(qd_message_t *msg);
-
-/**
- * Make a new reference to an existing message.
+ * Increase the reference count of a message.
  *
  * @param msg A pointer to a qd_message_t referencing a message.
- * @return A new pointer to the same referenced message.
+ * @return A pointer to the same message where refcount was incremented.
  */
-qd_message_t *qd_message_copy(qd_message_t *msg);
+qd_message_t * qd_message_incref(qd_message_t *msg);
+
+/**
+ * Decrement message reference. If this is the last reference to the message, free the
+ * message as well.
+ *
+ * @param msg A pointer to a qd_message_t referencing a message.
+ */
+void qd_message_decref(qd_message_t *msg);
 
 /**
  * Retrieve the message annotations from a message.

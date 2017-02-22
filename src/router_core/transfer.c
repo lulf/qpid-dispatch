@@ -209,7 +209,7 @@ void qdr_send_to1(qdr_core_t *core, qd_message_t *msg, qd_iterator_t *addr, bool
 {
     qdr_action_t *action = qdr_action(qdr_send_to_CT, "send_to");
     action->args.io.address           = qdr_field_from_iter(addr);
-    action->args.io.message           = qd_message_copy(msg);
+    action->args.io.message           = qd_message_incref(msg);
     action->args.io.exclude_inprocess = exclude_inprocess;
     action->args.io.control           = control;
 
@@ -221,7 +221,7 @@ void qdr_send_to2(qdr_core_t *core, qd_message_t *msg, const char *addr, bool ex
 {
     qdr_action_t *action = qdr_action(qdr_send_to_CT, "send_to");
     action->args.io.address           = qdr_field(addr);
-    action->args.io.message           = qd_message_copy(msg);
+    action->args.io.message           = qd_message_incref(msg);
     action->args.io.exclude_inprocess = exclude_inprocess;
     action->args.io.control           = control;
 
@@ -403,7 +403,7 @@ static void qdr_delete_delivery_internal_CT(qdr_core_t *core, qdr_delivery_t *de
     qdr_link_t *link = delivery->link;
 
     if (delivery->msg)
-        qd_message_free(delivery->msg);
+        qd_message_decref(delivery->msg);
 
     if (delivery->to_addr)
         qd_iterator_free(delivery->to_addr);
@@ -613,7 +613,7 @@ static void qdr_link_deliver_CT(qdr_core_t *core, qdr_action_t *action, bool dis
         memcpy(peer->tag, action->args.connection.tag, peer->tag_length);
 
         qdr_forward_deliver_CT(core, link->connected_link, peer);
-        qd_message_free(dlv->msg);
+        qd_message_decref(dlv->msg);
         dlv->msg = 0;
         link->total_deliveries++;
         if (!dlv->settled) {
@@ -685,7 +685,7 @@ static void qdr_send_to_CT(qdr_core_t *core, qdr_action_t *action, bool discard)
     }
 
     qdr_field_free(addr_field);
-    qd_message_free(msg);
+    qd_message_decref(msg);
 }
 
 

@@ -102,7 +102,7 @@ static qd_management_context_t* qd_management_context(qd_message_t              
     ctx->count  = count;
     ctx->field  = field;
     ctx->msg    = msg;
-    ctx->source = qd_message_copy(source);
+    ctx->source = qd_message_incref(source);
     ctx->query  = query;
     ctx->current_count = 0;
     ctx->core   = core;
@@ -204,8 +204,8 @@ static void qd_manage_response_handler(void *context, const qd_amqp_error_t *sta
     qd_iterator_free(reply_to);
     qd_compose_free(fld);
 
-    qd_message_free(ctx->msg);
-    qd_message_free(ctx->source);
+    qd_message_decref(ctx->msg);
+    qd_message_decref(ctx->source);
     qd_compose_free(ctx->field);
 
     free_qd_management_context_t(ctx);

@@ -103,10 +103,11 @@ qdr_delivery_t *qdr_forward_new_delivery_CT(qdr_core_t *core, qdr_delivery_t *in
     qdr_delivery_t *dlv = new_qdr_delivery_t();
     uint64_t       *tag = (uint64_t*) dlv->tag;
 
+
     ZERO(dlv);
     sys_atomic_init(&dlv->ref_count, 0);
     dlv->link       = link;
-    dlv->msg        = qd_message_copy(msg);
+    dlv->msg        = qd_message_incref(msg);
     dlv->settled    = !in_dlv || in_dlv->settled;
     dlv->presettled = dlv->settled;
     *tag            = core->next_tag++;
@@ -183,16 +184,17 @@ void qdr_forward_deliver_CT(qdr_core_t *core, qdr_link_t *link, qdr_delivery_t *
 void qdr_forward_on_message(qdr_core_t *core, qdr_general_work_t *work)
 {
     work->on_message(work->on_message_context, work->msg, work->maskbit, work->inter_router_cost);
-    qd_message_free(work->msg);
+    qd_message_decref(work->msg);
 }
 
 
 void qdr_forward_on_message_CT(qdr_core_t *core, qdr_subscription_t *sub, qdr_link_t *link, qd_message_t *msg)
 {
+
     qdr_general_work_t *work = qdr_general_work(qdr_forward_on_message);
     work->on_message         = sub->on_message;
     work->on_message_context = sub->on_message_context;
-    work->msg                = qd_message_copy(msg);
+    work->msg                = qd_message_incref(msg);
     work->maskbit            = link ? link->conn->mask_bit : 0;
     work->inter_router_cost  = link ? link->conn->inter_router_cost : 1;
     qdr_post_general_work_CT(core, work);

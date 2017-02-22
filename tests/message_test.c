@@ -78,7 +78,7 @@ static char* test_send_to_messenger(void *context)
         return "Address mismatch in received message";
 
     pn_message_free(pn_msg);
-    qd_message_free(msg);
+    qd_message_decref(msg);
 
     return 0;
 }
@@ -120,7 +120,7 @@ static char* test_receive_from_messenger(void *context)
         return "Incorrect field content returned from field_copy";
 
     pn_message_free(pn_msg);
-    qd_message_free(msg);
+    qd_message_decref(msg);
 
     return 0;
 }
@@ -176,7 +176,7 @@ static char* test_message_properties(void *context)
     if (iter) return "Expected no iterator for the 'to' field";
     qd_iterator_free(iter);
 
-    qd_message_free(msg);
+    qd_message_decref(msg);
 
     return 0;
 }
@@ -206,7 +206,7 @@ static char* test_check_multiple(void *context)
     valid = qd_message_check(msg, QD_DEPTH_PROPERTIES);
     if (!valid) return "qd_message_check returns 'invalid' for PROPERTIES";
 
-    qd_message_free(msg);
+    qd_message_decref(msg);
 
     return 0;
 }
@@ -279,7 +279,7 @@ static char* test_send_message_annotations(void *context)
     }
 
     pn_message_free(pn_msg);
-    qd_message_free(msg);
+    qd_message_decref(msg);
 
     return 0;
 }

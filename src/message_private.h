@@ -66,7 +66,6 @@ typedef struct {
 
 typedef struct {
     sys_mutex_t         *lock;
-    sys_atomic_t         ref_count;                       // The number of messages referencing this
     qd_buffer_list_t     buffers;                         // The buffer chain containing the message
     qd_field_location_t  section_message_header;          // The message header list
     qd_field_location_t  section_delivery_annotation;     // The delivery annotation map
@@ -95,6 +94,7 @@ typedef struct {
     qd_buffer_list_t      ma_trace;        // trace list in outgoing message annotations
     qd_buffer_list_t      ma_ingress;      // ingress field in outgoing message annotations
     int                   ma_phase;        // phase for the override address
+    sys_atomic_t          ref_count;       // reference count for this message
 } qd_message_pvt_t;
 
 ALLOC_DECLARE(qd_message_t);
