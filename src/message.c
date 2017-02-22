@@ -551,6 +551,7 @@ qd_message_t *qd_message()
     DEQ_INIT(msg->ma_to_override);
     DEQ_INIT(msg->ma_trace);
     DEQ_INIT(msg->ma_ingress);
+    sys_atomic_init(&msg->ref_count, 1);
     msg->ma_phase = 0;
     msg->content = new_qd_message_content_t();
 
@@ -575,6 +576,7 @@ void qd_message_decref(qd_message_t *in_msg)
     qd_message_pvt_t     *msg     = (qd_message_pvt_t*) in_msg;
 
     rc = sys_atomic_dec(&msg->ref_count) - 1;
+    assert(rc >= 0);
     if (rc == 0) {
         qd_buffer_list_free_buffers(&msg->ma_to_override);
         qd_buffer_list_free_buffers(&msg->ma_trace);
@@ -600,7 +602,8 @@ void qd_message_decref(qd_message_t *in_msg)
 qd_message_t *qd_message_incref(qd_message_t *in_msg)
 {
     qd_message_pvt_t     *msg     = (qd_message_pvt_t*) in_msg;
-    sys_atomic_inc(&msg->ref_count);
+    uint32_t rc = sys_atomic_inc(&msg->ref_count);
+    assert(rc >= 1);
     return in_msg;
 }
 
