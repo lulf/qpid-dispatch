@@ -24,6 +24,7 @@
 #include <qpid/dispatch/threading.h>
 #include <qpid/dispatch/atomic.h>
 #include <qpid/dispatch/log.h>
+#include "../queue/fixed_size_stream.h"
 #include <memory.h>
 
 typedef struct qdr_address_t         qdr_address_t;
@@ -150,7 +151,7 @@ struct qdr_action_t {
 };
 
 ALLOC_DECLARE(qdr_action_t);
-DEQ_DECLARE(qdr_action_t, qdr_action_list_t);
+typedef struct fixed_size_stream_t qdr_action_list_t;
 
 #define QDR_AGENT_MAX_COLUMNS 64
 #define QDR_AGENT_COLUMN_NULL (QDR_AGENT_MAX_COLUMNS + 1)
@@ -634,8 +635,8 @@ void qdr_management_agent_on_message(void *context, qd_message_t *msg, int link_
 void  qdr_route_table_setup_CT(qdr_core_t *core);
 void  qdr_agent_setup_CT(qdr_core_t *core);
 void  qdr_forwarder_setup_CT(qdr_core_t *core);
-qdr_action_t *qdr_action(qdr_action_handler_t action_handler, const char *label);
-void qdr_action_enqueue(qdr_core_t *core, qdr_action_t *action);
+qdr_action_t *qdr_action(qdr_core_t *core, qdr_action_handler_t action_handler, const char *label);
+void qdr_action_enqueue(qdr_action_t *action);
 void qdr_link_issue_credit_CT(qdr_core_t *core, qdr_link_t *link, int credit, bool drain);
 void qdr_addr_start_inlinks_CT(qdr_core_t *core, qdr_address_t *addr);
 void qdr_delivery_push_CT(qdr_core_t *core, qdr_delivery_t *dlv);

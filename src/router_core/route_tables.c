@@ -40,88 +40,88 @@ static void qdr_unsubscribe_CT       (qdr_core_t *core, qdr_action_t *action, bo
 
 void qdr_core_add_router(qdr_core_t *core, const char *address, int router_maskbit)
 {
-    qdr_action_t *action = qdr_action(qdr_add_router_CT, "add_router");
+    qdr_action_t *action = qdr_action(core, qdr_add_router_CT, "add_router");
     action->args.route_table.router_maskbit = router_maskbit;
     action->args.route_table.address        = qdr_field(address);
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_core_del_router(qdr_core_t *core, int router_maskbit)
 {
-    qdr_action_t *action = qdr_action(qdr_del_router_CT, "del_router");
+    qdr_action_t *action = qdr_action(core, qdr_del_router_CT, "del_router");
     action->args.route_table.router_maskbit = router_maskbit;
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_core_set_link(qdr_core_t *core, int router_maskbit, int link_maskbit)
 {
-    qdr_action_t *action = qdr_action(qdr_set_link_CT, "set_link");
+    qdr_action_t *action = qdr_action(core, qdr_set_link_CT, "set_link");
     action->args.route_table.router_maskbit = router_maskbit;
     action->args.route_table.link_maskbit   = link_maskbit;
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_core_remove_link(qdr_core_t *core, int router_maskbit)
 {
-    qdr_action_t *action = qdr_action(qdr_remove_link_CT, "remove_link");
+    qdr_action_t *action = qdr_action(core, qdr_remove_link_CT, "remove_link");
     action->args.route_table.router_maskbit = router_maskbit;
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_core_set_next_hop(qdr_core_t *core, int router_maskbit, int nh_router_maskbit)
 {
-    qdr_action_t *action = qdr_action(qdr_set_next_hop_CT, "set_next_hop");
+    qdr_action_t *action = qdr_action(core, qdr_set_next_hop_CT, "set_next_hop");
     action->args.route_table.router_maskbit    = router_maskbit;
     action->args.route_table.nh_router_maskbit = nh_router_maskbit;
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_core_remove_next_hop(qdr_core_t *core, int router_maskbit)
 {
-    qdr_action_t *action = qdr_action(qdr_remove_next_hop_CT, "remove_next_hop");
+    qdr_action_t *action = qdr_action(core, qdr_remove_next_hop_CT, "remove_next_hop");
     action->args.route_table.router_maskbit = router_maskbit;
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_core_set_cost(qdr_core_t *core, int router_maskbit, int cost)
 {
-    qdr_action_t *action = qdr_action(qdr_set_cost_CT, "set_cost");
+    qdr_action_t *action = qdr_action(core, qdr_set_cost_CT, "set_cost");
     action->args.route_table.router_maskbit = router_maskbit;
     action->args.route_table.cost           = cost;
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_core_set_valid_origins(qdr_core_t *core, int router_maskbit, qd_bitmask_t *routers)
 {
-    qdr_action_t *action = qdr_action(qdr_set_valid_origins_CT, "set_valid_origins");
+    qdr_action_t *action = qdr_action(core, qdr_set_valid_origins_CT, "set_valid_origins");
     action->args.route_table.router_maskbit = router_maskbit;
     action->args.route_table.router_set     = routers;
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_core_map_destination(qdr_core_t *core, int router_maskbit, const char *address_hash)
 {
-    qdr_action_t *action = qdr_action(qdr_map_destination_CT, "map_destination");
+    qdr_action_t *action = qdr_action(core, qdr_map_destination_CT, "map_destination");
     action->args.route_table.router_maskbit = router_maskbit;
     action->args.route_table.address        = qdr_field(address_hash);
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 
 void qdr_core_unmap_destination(qdr_core_t *core, int router_maskbit, const char *address_hash)
 {
-    qdr_action_t *action = qdr_action(qdr_unmap_destination_CT, "unmap_destination");
+    qdr_action_t *action = qdr_action(core, qdr_unmap_destination_CT, "unmap_destination");
     action->args.route_table.router_maskbit = router_maskbit;
     action->args.route_table.address        = qdr_field(address_hash);
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 }
 
 void qdr_core_route_table_handlers(qdr_core_t           *core, 
@@ -151,13 +151,13 @@ qdr_subscription_t *qdr_core_subscribe(qdr_core_t             *core,
     sub->on_message         = on_message;
     sub->on_message_context = context;
 
-    qdr_action_t *action = qdr_action(qdr_subscribe_CT, "subscribe");
+    qdr_action_t *action = qdr_action(core, qdr_subscribe_CT, "subscribe");
     action->args.io.address       = qdr_field(address);
     action->args.io.address_class = aclass;
     action->args.io.address_phase = phase;
     action->args.io.subscription  = sub;
     action->args.io.treatment     = treatment;
-    qdr_action_enqueue(core, action);
+    qdr_action_enqueue(action);
 
     return sub;
 }
@@ -166,9 +166,9 @@ qdr_subscription_t *qdr_core_subscribe(qdr_core_t             *core,
 void qdr_core_unsubscribe(qdr_subscription_t *sub)
 {
     if (sub) {
-        qdr_action_t *action = qdr_action(qdr_unsubscribe_CT, "unsubscribe");
+        qdr_action_t *action = qdr_action(sub->core, qdr_unsubscribe_CT, "unsubscribe");
         action->args.io.subscription = sub;
-        qdr_action_enqueue(sub->core, action);
+        qdr_action_enqueue(action);
     }
 }
 

@@ -18,7 +18,9 @@
  */
 
 #include "router_core_private.h"
+#include <sys/user.h>
 #include <stdio.h>
+#include <time.h>
 
 ALLOC_DEFINE(qdr_address_t);
 ALLOC_DEFINE(qdr_address_config_t);
@@ -53,10 +55,10 @@ qdr_core_t *qdr_core(qd_dispatch_t *qd, qd_router_mode_t mode, const char *area,
     //
     // Set up the threading support
     //
-    core->action_cond = sys_cond();
-    core->action_lock = sys_mutex();
     core->running     = true;
-    DEQ_INIT(core->action_list);
+    index_t buffer_capacity = fixed_size_stream_capacity(128 * 1024, sizeof(qdr_action_t) + 4, 4);
+    uint8_t * buffer = aligned_alloc(PAGE_SIZE, buffer_capacity);
+    new_fixed_size_stream(buffer, &core->action_list, 128 * 1024, sizeof(qdr_action_t) + 4, 4);
 
     core->work_lock = sys_mutex();
     DEQ_INIT(core->work_list);
@@ -93,15 +95,12 @@ void qdr_core_free(qdr_core_t *core)
     // Stop and join the thread
     //
     core->running = false;
-    sys_cond_signal(core->action_cond);
     sys_thread_join(core->thread);
 
     //
     // Free the core resources
     //
     sys_thread_free(core->thread);
-    sys_cond_free(core->action_cond);
-    sys_mutex_free(core->action_lock);
     sys_mutex_free(core->work_lock);
     sys_mutex_free(core->id_lock);
     qd_timer_free(core->work_timer);
@@ -241,22 +240,24 @@ char *qdr_field_copy(qdr_field_t *field)
 }
 
 
-qdr_action_t *qdr_action(qdr_action_handler_t action_handler, const char *label)
+qdr_action_t *qdr_action(qdr_core_t * core, qdr_action_handler_t action_handler, const char *label)
 {
-    qdr_action_t *action = new_qdr_action_t();
+
+    qdr_action_t * action = NULL;
+    while (!fixed_size_stream_try_claim(&core->action_list, (uint8_t **)&action)) {
+        __asm__ __volatile__("pause;");
+    }
     ZERO(action);
     action->action_handler = action_handler;
     action->label          = label;
+
     return action;
 }
 
 
-void qdr_action_enqueue(qdr_core_t *core, qdr_action_t *action)
+void qdr_action_enqueue(qdr_action_t *action)
 {
-    sys_mutex_lock(core->action_lock);
-    DEQ_INSERT_TAIL(core->action_list, action);
-    sys_cond_signal(core->action_cond);
-    sys_mutex_unlock(core->action_lock);
+    fixed_size_stream_commit_claim((uint8_t *)action);
 }
 
 
