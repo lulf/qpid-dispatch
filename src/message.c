@@ -603,6 +603,7 @@ qd_message_t *qd_message_incref(qd_message_t *in_msg)
 {
     qd_message_pvt_t     *msg     = (qd_message_pvt_t*) in_msg;
     uint32_t rc = sys_atomic_inc(&msg->ref_count);
+    (void) rc;
     assert(rc >= 1);
     return in_msg;
 }
