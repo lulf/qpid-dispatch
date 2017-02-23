@@ -578,7 +578,7 @@ void qd_message_decref(qd_message_t *in_msg)
     rc = sys_atomic_dec(&msg->ref_count) - 1;
     assert(rc >= 0);
     if (rc == 0) {
-        printf("Freeing message 0x%p\n", msg);
+        // printf("Freeing message 0x%p\n", msg);
         qd_buffer_list_free_buffers(&msg->ma_to_override);
         qd_buffer_list_free_buffers(&msg->ma_trace);
         qd_buffer_list_free_buffers(&msg->ma_ingress);
@@ -606,7 +606,7 @@ qd_message_t *qd_message_incref(qd_message_t *in_msg)
     uint32_t rc = sys_atomic_inc(&msg->ref_count);
     (void) rc;
     assert(rc >= 1);
-    printf("Incref message 0x%p\n", msg);
+    // printf("Incref message 0x%p\n", msg);
     return in_msg;
 }
 
@@ -614,6 +614,7 @@ qd_message_t *qd_message_incref(qd_message_t *in_msg)
 qd_parsed_field_t *qd_message_message_annotations(qd_message_t *in_msg)
 {
     qd_message_pvt_t     *msg     = (qd_message_pvt_t*) in_msg;
+    assert(sys_atomic_get(&msg->ref_count) >= 1);
     qd_message_content_t *content = msg->content;
 
     if (content->parsed_message_annotations)
@@ -641,6 +642,7 @@ qd_parsed_field_t *qd_message_message_annotations(qd_message_t *in_msg)
 void qd_message_set_trace_annotation(qd_message_t *in_msg, qd_composed_field_t *trace_field)
 {
     qd_message_pvt_t *msg = (qd_message_pvt_t*) in_msg;
+    assert(sys_atomic_get(&msg->ref_count) >= 1);
     qd_buffer_list_free_buffers(&msg->ma_trace);
     qd_compose_take_buffers(trace_field, &msg->ma_trace);
     qd_compose_free(trace_field);
@@ -649,6 +651,7 @@ void qd_message_set_trace_annotation(qd_message_t *in_msg, qd_composed_field_t *
 void qd_message_set_to_override_annotation(qd_message_t *in_msg, qd_composed_field_t *to_field)
 {
     qd_message_pvt_t *msg = (qd_message_pvt_t*) in_msg;
+    assert(sys_atomic_get(&msg->ref_count) >= 1);
     qd_buffer_list_free_buffers(&msg->ma_to_override);
     qd_compose_take_buffers(to_field, &msg->ma_to_override);
     qd_compose_free(to_field);
@@ -657,18 +660,21 @@ void qd_message_set_to_override_annotation(qd_message_t *in_msg, qd_composed_fie
 void qd_message_set_phase_annotation(qd_message_t *in_msg, int phase)
 {
     qd_message_pvt_t *msg = (qd_message_pvt_t*) in_msg;
+    assert(sys_atomic_get(&msg->ref_count) >= 1);
     msg->ma_phase = phase;
 }
 
 int qd_message_get_phase_annotation(const qd_message_t *in_msg)
 {
     qd_message_pvt_t *msg = (qd_message_pvt_t*) in_msg;
+    assert(sys_atomic_get(&msg->ref_count) >= 1);
     return msg->ma_phase;
 }
 
 void qd_message_set_ingress_annotation(qd_message_t *in_msg, qd_composed_field_t *ingress_field)
 {
     qd_message_pvt_t *msg = (qd_message_pvt_t*) in_msg;
+    assert(sys_atomic_get(&msg->ref_count) >= 1);
     qd_buffer_list_free_buffers(&msg->ma_ingress);
     qd_compose_take_buffers(ingress_field, &msg->ma_ingress);
     qd_compose_free(ingress_field);
@@ -683,6 +689,7 @@ qd_message_t *qd_message_receive(pn_delivery_t *delivery)
     pn_record_t *record    = pn_delivery_attachments(delivery);
     qd_message_pvt_t *msg  = (qd_message_pvt_t*) pn_record_get(record, PN_DELIVERY_CTX);
 
+    assert(sys_atomic_get(&msg->ref_count) >= 1);
     //
     // If there is no message associated with the delivery, this is the first time
     // we've received anything on this delivery.  Allocate a message descriptor and
@@ -858,6 +865,7 @@ void qd_message_send(qd_message_t *in_msg,
     qd_buffer_t          *buf     = DEQ_HEAD(content->buffers);
     unsigned char        *cursor;
     pn_link_t            *pnl     = qd_link_pn(link);
+    assert(sys_atomic_get(&msg->ref_count) >= 1);
 
     char repr[qd_message_repr_len()];
     qd_log(log_source, QD_LOG_TRACE, "Sending %s on link %s",
