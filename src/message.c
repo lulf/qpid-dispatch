@@ -689,7 +689,6 @@ qd_message_t *qd_message_receive(pn_delivery_t *delivery)
     pn_record_t *record    = pn_delivery_attachments(delivery);
     qd_message_pvt_t *msg  = (qd_message_pvt_t*) pn_record_get(record, PN_DELIVERY_CTX);
 
-    assert(sys_atomic_get(&msg->ref_count) >= 1);
     //
     // If there is no message associated with the delivery, this is the first time
     // we've received anything on this delivery.  Allocate a message descriptor and
@@ -700,6 +699,8 @@ qd_message_t *qd_message_receive(pn_delivery_t *delivery)
         pn_record_def(record, PN_DELIVERY_CTX, PN_WEAKREF);
         pn_record_set(record, PN_DELIVERY_CTX, (void*) msg);
     }
+
+    assert(sys_atomic_get(&msg->ref_count) >= 1);
 
     //
     // Get a reference to the tail buffer on the message.  This is the buffer into which
