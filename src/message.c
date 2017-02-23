@@ -578,6 +578,7 @@ void qd_message_decref(qd_message_t *in_msg)
     rc = sys_atomic_dec(&msg->ref_count) - 1;
     assert(rc >= 0);
     if (rc == 0) {
+        printf("Freeing message 0x%p\n", msg);
         qd_buffer_list_free_buffers(&msg->ma_to_override);
         qd_buffer_list_free_buffers(&msg->ma_trace);
         qd_buffer_list_free_buffers(&msg->ma_ingress);
@@ -605,6 +606,7 @@ qd_message_t *qd_message_incref(qd_message_t *in_msg)
     uint32_t rc = sys_atomic_inc(&msg->ref_count);
     (void) rc;
     assert(rc >= 1);
+    printf("Incref message 0x%p\n", msg);
     return in_msg;
 }
 
