@@ -19,6 +19,7 @@
 
 #include "metric_exporter_private.h"
 #include "dispatch_private.h"
+#include "metric_private.h"
 #include <stdio.h>
 
 #define MIN(a, b) (a) < (b) ? (a) : (b)
@@ -45,12 +46,6 @@ write_string(qd_buffer_list_t *buffers, const char *str, unsigned long long len)
     }
 }
 
-static void
-write_string_term(qd_buffer_list_t *buffers, const char *str)
-{
-	write_string(buffers, str, strlen(str));
-}
-
 typedef enum {
     METRIC_TYPE_GAUGE = 1,
     METRIC_TYPE_COUNTER
@@ -69,28 +64,8 @@ type_to_string(metric_type_t type)
     }
 }
 
-void
-write_metric_header(qd_buffer_list_t *bufs,
-	const char *name,
-	const char *description,
-	metric_type_t type)
-{
-	write_string_term(bufs, "# HELP ");
-	write_string_term(bufs, name);
-	write_string_term(bufs, " ");
-	write_string_term(bufs, description);
-	write_string_term(bufs, "\n");
-
-	write_string_term(bufs, "# TYPE ");
-	write_string_term(bufs, name);
-	write_string_term(bufs, " ");
-	write_string_term(bufs, type_to_string(type));
-	write_string_term(bufs, "\n");
-}
-
-#if 0
 static void
-metric_write(qd_metric_t *metric, qd_buffer_list_t *buffers)
+qd_metric_write(qd_metric_t *metric, qd_buffer_list_t *buffers)
 {
     qd_metric_value_t * value = DEQ_HEAD(metric->values);
 
@@ -122,20 +97,20 @@ metric_write(qd_metric_t *metric, qd_buffer_list_t *buffers)
         value = DEQ_NEXT(value);
     }
 }
-#endif
 
+typedef void (*metric_collector_t)(qd_metric_list_t *metrics, pn_data_t *body);
 
 struct metric_query_ctx_t {
     qdr_query_t *query;
-    sys_mutex_t *lock;
-    sys_cond_t  *cond;
     qd_composed_field_t *field;
     metric_callback_t callback;
+    metric_collector_t collector;
 
     int count;
     int current_count;
-    bool done;
     void *callback_ctx;
+
+    qd_metric_list_t metric_list;
 };
 
 typedef struct metric_query_ctx_t metric_query_ctx_t;
@@ -152,11 +127,6 @@ static size_t flatten_bufs(char * buffer, qd_buffer_list_t *content)
     }
 
     return (size_t) (cursor - buffer);
-}
-
-void
-metric_query_response_result_handler(metric_query_ctx_t *context, pn_data_t *result)
-{
 }
 
 void
@@ -196,51 +166,79 @@ metric_query_response_handler(void *context, const qd_amqp_error_t *status, bool
     pn_type_t type = pn_data_type(body);
     printf("Got data with type: %s\n", pn_type_name(type));
 
-    qd_buffer_list_t callback_data;
-    DEQ_INIT(callback_data);
-
     size_t count = pn_data_get_map(body);
     printf("Found map with %lu entries\n", count);
 	pn_data_enter(body);
 	for (size_t i = 0; i < count/2; i++) {
 		// read key
+        pn_bytes_t key;
 	  	if (pn_data_next(body)) {
 			switch (pn_data_type(body)) {
 		  		case PN_STRING:
-					{
-						pn_bytes_t key = pn_data_get_string(body);
-						if (strncmp(key.start, "results", key.size) == 0) {
-							pn_data_next(body);
-							size_t num_connections = pn_data_get_list(body);
-							
-							write_metric_header(&callback_data, "num_connections", "Number of connections", METRIC_TYPE_GAUGE);
-				
-							char buf[128];
-							snprintf(buf, 128, "num_connections %ld\n", num_connections);
-							write_string(&callback_data, buf, strlen(buf));
-						}
-					}
+                    key = pn_data_get_string(body);
 					break;
 				default:
 					break;
 			}
 		}
-		// read value
-	    if (pn_data_next(body)) {
-			switch (pn_data_type(body)) {
-				default:
-					break;
-			}
-		}
-	}
 
+        // get value;
+        pn_data_next(body);
+        if (strncmp(key.start, "results", key.size) == 0) {
+            ctx->collector(&ctx->metric_list, body);
+        }
+	}
 	pn_data_exit(body);
 
+    qd_buffer_list_t callback_data;
+    DEQ_INIT(callback_data);
+
+    qd_metric_t *metric = DEQ_HEAD(ctx->metric_list);
+    while (metric != NULL) {
+        qd_metric_write(metric, &callback_data);
+        metric = DEQ_NEXT(metric);
+    }
+
     ctx->callback(callback_data, ctx->callback_ctx);
+
+    pn_data_free(body);
 
     printf("IN QUERY CALLBACK, DONE\n");
 	qd_compose_free(field);
 	free(ctx);
+}
+
+static void
+metric_connection_collector(qd_metric_list_t *metrics, pn_data_t *body)
+{
+    size_t num_connections = pn_data_get_list(body);
+    qd_metric_t *metric = qd_metric("connections", "Number of connections", METRIC_TYPE_GAUGE);
+
+    pn_data_enter(body);
+    for (size_t i = 0; i < num_connections; i++) {
+        if (pn_data_next(body)) {
+            size_t entries = pn_data_get_map(body);
+            pn_data_enter(body);
+            for (size_t j = 0; j < entries/2; j++) {
+                pn_bytes_t key;
+                if (pn_data_next(body)) {
+                    if (pn_data_type(body) == PN_STRING) {
+                        key = pn_data_get_string(body);
+                    }
+                }
+
+                pn_data_next(body);
+                if (strncmp(key.start, "container", key.size) == 0) {
+                    pn_bytes_t value = pn_data_get_string(body);
+                    QD_METRIC_INC_L1(metric, "container", value.start);
+                }
+            }
+            pn_data_exit(body);
+        }
+    }
+    pn_data_exit(body);
+
+    DEQ_INSERT_TAIL(*metrics, metric);
 }
 
 void
@@ -258,6 +256,8 @@ metric_export_prometheus(qd_dispatch_t *dispatch, metric_callback_t callback, vo
     ctx->count = -1;
     ctx->current_count = 0;
     ctx->field = qd_compose_subfield(0);
+    ctx->collector = metric_connection_collector;
+    DEQ_INIT(ctx->metric_list);
 
     qd_compose_start_map(ctx->field);
 

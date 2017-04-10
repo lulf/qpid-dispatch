@@ -59,6 +59,7 @@ set(qpid_dispatch_SOURCES
   iterator.c
   log.c
   message.c
+  metric.c
   metric_exporter.c
   parse.c
   policy.c
