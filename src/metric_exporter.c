@@ -44,7 +44,12 @@ write_string(qd_buffer_list_t *buffers, const char *str, unsigned long long len)
         }
     }
 }
-#if 0
+
+static void
+write_string_term(qd_buffer_list_t *buffers, const char *str)
+{
+	write_string(buffers, str, strlen(str));
+}
 
 typedef enum {
     METRIC_TYPE_GAUGE = 1,
@@ -64,6 +69,26 @@ type_to_string(metric_type_t type)
     }
 }
 
+void
+write_metric_header(qd_buffer_list_t *bufs,
+	const char *name,
+	const char *description,
+	metric_type_t type)
+{
+	write_string_term(bufs, "# HELP ");
+	write_string_term(bufs, name);
+	write_string_term(bufs, " ");
+	write_string_term(bufs, description);
+	write_string_term(bufs, "\n");
+
+	write_string_term(bufs, "# TYPE ");
+	write_string_term(bufs, name);
+	write_string_term(bufs, " ");
+	write_string_term(bufs, type_to_string(type));
+	write_string_term(bufs, "\n");
+}
+
+#if 0
 static void
 metric_write(qd_metric_t *metric, qd_buffer_list_t *buffers)
 {
@@ -130,6 +155,11 @@ static size_t flatten_bufs(char * buffer, qd_buffer_list_t *content)
 }
 
 void
+metric_query_response_result_handler(metric_query_ctx_t *context, pn_data_t *result)
+{
+}
+
+void
 metric_query_response_handler(void *context, const qd_amqp_error_t *status, bool more)
 {
     printf("IN QUERY CALLBACK\n");
@@ -165,16 +195,52 @@ metric_query_response_handler(void *context, const qd_amqp_error_t *status, bool
 
     pn_type_t type = pn_data_type(body);
     printf("Got data with type: %s\n", pn_type_name(type));
-    size_t count = pn_data_get_map(body);
-    printf("Found map with %lu entries\n", count);
 
     qd_buffer_list_t callback_data;
     DEQ_INIT(callback_data);
-    write_string(&callback_data, "HEI", 3);
+
+    size_t count = pn_data_get_map(body);
+    printf("Found map with %lu entries\n", count);
+	pn_data_enter(body);
+	for (size_t i = 0; i < count/2; i++) {
+		// read key
+	  	if (pn_data_next(body)) {
+			switch (pn_data_type(body)) {
+		  		case PN_STRING:
+					{
+						pn_bytes_t key = pn_data_get_string(body);
+						if (strncmp(key.start, "results", key.size) == 0) {
+							pn_data_next(body);
+							size_t num_connections = pn_data_get_list(body);
+							
+							write_metric_header(&callback_data, "num_connections", "Number of connections", METRIC_TYPE_GAUGE);
+				
+							char buf[128];
+							snprintf(buf, 128, "num_connections %ld\n", num_connections);
+							write_string(&callback_data, buf, strlen(buf));
+						}
+					}
+					break;
+				default:
+					break;
+			}
+		}
+		// read value
+	    if (pn_data_next(body)) {
+			switch (pn_data_type(body)) {
+				default:
+					break;
+			}
+		}
+	}
+
+	pn_data_exit(body);
 
     ctx->callback(callback_data, ctx->callback_ctx);
 
     printf("IN QUERY CALLBACK, DONE\n");
+	qd_compose_free(field);
+	free(ctx);
 }
 
 void
@@ -200,7 +266,7 @@ metric_export_prometheus(qd_dispatch_t *dispatch, metric_callback_t callback, vo
     qd_parsed_field_t *attribute_names_parsed_field = NULL;
     printf("Created query\n");
 
-    ctx->query = qdr_manage_query(dispatch->router->router_core, ctx, QD_ROUTER_LINK, attribute_names_parsed_field, ctx->field, metric_query_response_handler);
+    ctx->query = qdr_manage_query(dispatch->router->router_core, ctx, QD_ROUTER_CONNECTION, attribute_names_parsed_field, ctx->field, metric_query_response_handler);
 
     qdr_query_add_attribute_names(ctx->query);
     qd_compose_insert_string(ctx->field, "results");
