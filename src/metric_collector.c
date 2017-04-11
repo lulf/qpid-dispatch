@@ -22,7 +22,7 @@
 #include "metric_private.h"
 #include <stdio.h>
 
-typedef void (*metric_result_parser_t)(qd_metric_list_t *metrics, pn_data_t *body);
+typedef void (*metric_result_parser_t)(qd_metric_list_t *metrics, pn_data_t *body, pn_handle_t attributes, pn_handle_t results);
 typedef struct metric_collector_t metric_collector_t;
 typedef struct metric_collect_context_t metric_collect_context_t;
 
@@ -54,9 +54,10 @@ typedef struct metric_collect_context_t metric_collect_context_t;
 #define MIN(a, b) (a) < (b) ? (a) : (b)
 static void write_string(qd_buffer_list_t *buffers, const char *str, unsigned long long len);
 static void metric_collect_start(metric_collect_context_t *ctx);
-static void metric_collect_add_collector(qd_dispatch_t *dispatch, metric_collect_context_t *parent_ctx, int val, metric_result_parser_t parser);
+static void metric_collect_add_collector(qd_dispatch_t *dispatch, metric_collect_context_t *parent_ctx, qd_router_entity_type_t entity_type, metric_result_parser_t parser);
 static void metric_connection_collector(qd_metric_list_t *metrics, pn_data_t *body);
 static qd_metric_label_t map_get_label(pn_data_t *body, const char *key);
+static void map_get_entry(pn_data_t *body, const char *key, pn_handle_t *key_handle, pn_handle_t *value_handle);
 static void metric_query_response_handler(void *context, const qd_amqp_error_t *status, bool more);
 static pn_data_t * metric_decode_query_response(qd_composed_field_t *field);
 static void qd_metric_write(qd_metric_t *metric, qd_buffer_list_t *buffers);
@@ -77,8 +78,73 @@ metric_collect(qd_dispatch_t *dispatch, metric_callback_t callback, void *callba
     DEQ_INIT(ctx->metric_list);
     DEQ_INIT(ctx->collector_list);
 
+    printf("Adding collector\n");
     metric_collect_add_collector(dispatch, ctx, QD_ROUTER_CONNECTION, metric_connection_collector);
+    printf("Starting collector\n");
     metric_collect_start(ctx);
+}
+
+void
+metric_query_response_handler(void *context, const qd_amqp_error_t *status, bool more)
+{
+    printf("IN QUERY CALLBACK\n");
+    metric_collector_t *collector = (metric_collector_t *)context;
+
+    if (status->status / 100 == 2) {
+        if (more) {
+            collector->current_count++;
+            if (collector->count != collector->current_count) {
+                qdr_query_get_next(collector->query);
+                return;
+            } else {
+                qdr_query_free(collector->query);
+            }
+        }
+    }
+    qd_compose_end_list(collector->field);
+    qd_compose_end_map(collector->field);
+
+
+    pn_data_t *body = metric_decode_query_response(collector->field);
+    collector->response = body;
+    metric_collect_context_t *ctx = collector->parent_ctx;
+
+    size_t count = pn_data_get_map(body);
+
+    pn_data_enter(body);
+    pn_handle_t attribute_names_key, attribute_names_value;
+    pn_handle_t results_key, results_value;
+
+    map_get_entry(body, "results", &results_key, &results_value);
+    map_get_entry(body, "attributeNames", &attribute_names_key, &attribute_names_value);
+
+    collector->parser(&ctx->metric_list, body, attribute_names_value, results_value);
+
+    if (++ctx->completed == DEQ_SIZE(ctx->collector_list)) {
+        qd_buffer_list_t buffers;
+        DEQ_INIT(buffers);
+
+
+        qd_metric_t *metric = DEQ_HEAD(ctx->metric_list);
+        while (metric != NULL) {
+            qd_metric_write(metric, &buffers);
+            DEQ_REMOVE_HEAD(ctx->metric_list);
+            qd_metric_free(metric);
+            metric = DEQ_HEAD(ctx->metric_list);
+        }
+
+        ctx->callback(buffers, ctx->callback_ctx);
+
+        collector = DEQ_HEAD(ctx->collector_list);
+        while (collector != NULL) {
+            DEQ_REMOVE_HEAD(ctx->collector_list);
+            pn_data_free(collector->response);
+            qd_compose_free(collector->field);
+            free(collector);
+            collector = DEQ_HEAD(ctx->collector_list);
+        }
+        free(ctx);
+    }
 }
 
 static size_t flatten_bufs(char * buffer, qd_buffer_list_t *content)
@@ -116,125 +182,84 @@ metric_decode_query_response(qd_composed_field_t *field)
     return body;
 }
 
-void
-metric_query_response_handler(void *context, const qd_amqp_error_t *status, bool more)
-{
-    printf("IN QUERY CALLBACK\n");
-    metric_collector_t *collector = (metric_collector_t *)context;
-
-    if (status->status / 100 == 2) {
-        if (more) {
-            collector->current_count++;
-            if (collector->count != collector->current_count) {
-                qdr_query_get_next(collector->query);
-                return;
-            } else {
-                qdr_query_free(collector->query);
-            }
-        }
-    }
-    qd_compose_end_list(collector->field);
-    qd_compose_end_map(collector->field);
-
-
-    pn_data_t *body = metric_decode_query_response(collector->field);
-    collector->response = body;
-    metric_collect_context_t *ctx = collector->parent_ctx;
-
-    size_t count = pn_data_get_map(body);
-    pn_data_enter(body);
-    for (size_t i = 0; i < count/2; i++) {
-        // read key
-        pn_bytes_t key;
-        if (pn_data_next(body)) {
-            switch (pn_data_type(body)) {
-                case PN_STRING:
-                    key = pn_data_get_string(body);
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        // get value;
-        pn_data_next(body);
-        if (strncmp(key.start, "results", key.size) == 0) {
-            // Collect metrics from results
-            collector->parser(&ctx->metric_list, body);
-        }
-    }
-    pn_data_exit(body);
-
-    if (++ctx->completed == DEQ_SIZE(ctx->collector_list)) {
-        qd_buffer_list_t buffers;
-        DEQ_INIT(buffers);
-
-
-        qd_metric_t *metric = DEQ_HEAD(ctx->metric_list);
-        while (metric != NULL) {
-            qd_metric_write(metric, &buffers);
-            DEQ_REMOVE_HEAD(ctx->metric_list);
-            qd_metric_free(metric);
-            metric = DEQ_HEAD(ctx->metric_list);
-        }
-
-        ctx->callback(buffers, ctx->callback_ctx);
-
-        collector = DEQ_HEAD(ctx->collector_list);
-        while (collector != NULL) {
-            DEQ_REMOVE_HEAD(ctx->collector_list);
-            pn_data_free(collector->response);
-            qd_compose_free(collector->field);
-            free(collector);
-            collector = DEQ_HEAD(ctx->collector_list);
-        }
-        free(ctx);
-    }
-}
-
 static qd_metric_label_t
 map_get_label(pn_data_t *body, const char *key)
 {
-    qd_metric_label_t label = { .key = {0, 0}, .value = {0, 0}};
-    size_t entries = pn_data_get_map(body);
+    qd_metric_label_t label;
+    pn_handle_t key_handle;
+    pn_handle_t value_handle;
 
+    map_get_entry(body, key, &key_handle, &value_handle);
+
+    pn_data_restore(key_handle);
+    label.key = pn_data_get_string(body);
+
+    pn_data_restore(value_handle);
+    label.value = pn_data_get_string(body);
+    return label;
+}
+
+static void
+map_get_entry(pn_data_t *body, const char *key, pn_handle_t *key_handle, pn_handle_t *value_handle)
+{
+    size_t entries = pn_data_get_map(body);
     pn_data_enter(body);
     for (size_t j = 0; j < entries/2; j++) {
         pn_bytes_t entry_key = {0, 0};
         if (pn_data_next(body)) {
             if (pn_data_type(body) == PN_STRING) {
                 entry_key = pn_data_get_string(body);
+                *key_handle = pn_data_point(body);
             }
         }
 
         if (pn_data_next(body)) {
             if (strncmp(entry_key.start, key, strlen(key)) == 0) {
-                label.key = entry_key;
-                label.value = pn_data_get_string(body);
+                *value_handle = pn_data_point(body);
                 break;
             }
         }
     }
     pn_data_exit(body);
-    return label;
 }
 
 static void
-metric_connection_collector(qd_metric_list_t *metrics, pn_data_t *body)
+metric_connection_collector(qd_metric_list_t *metrics, pn_data_t *body, pn_handle_t attributes, pn_handle_t results)
 {
+    printf("Dump\n");
+    pn_data_dump(body);
+    printf("End dump\n");
+
     size_t num_connections = pn_data_get_list(body);
     qd_metric_t *metric = qd_metric("connections", "Number of connections", QD_METRIC_TYPE_GAUGE);
+    printf("Found data type %s for list with %lu entries\n", pn_type_name(pn_data_type(body)), num_connections);
 
     pn_data_enter(body);
+    printf("Found data type on enter %s\n", pn_type_name(pn_data_type(body)));
     for (size_t i = 0; i < num_connections; i++) {
-        if (pn_data_next(body)) {
+        if (pn_data_next(body) && pn_data_type(body) == PN_LIST) {
+            size_t keys = pn_data_get_list(body);
+            printf("Keys %lu\n", keys);
+            pn_data_enter(body);
+            for (size_t k = 0; k < keys; k++) {
+                if (pn_data_next(body)) {
+                    printf("Type %s\n", pn_type_name(pn_data_type(body)));
+                    if (pn_data_type(body) == PN_STRING) {
+                        pn_bytes_t str = pn_data_get_string(body);
+                        printf("Str: %s\n", str.start);
 
-            qd_metric_label_t labels[3];
-            labels[0] = map_get_label(body, "container");
-            labels[1] = map_get_label(body, "dir");
-            labels[2] = map_get_label(body, "role");
+                    }
 
-            qd_metric_inc(metric, 1, labels, 3);
+           //         qd_metric_label_t labels[3];
+           //         labels[0] = map_get_label(body, "container");
+           //         labels[1] = map_get_label(body, "dir");
+           //         labels[2] = map_get_label(body, "role");
+           //         printf("Label container: %s\n", labels[0].key.start);
+
+           //         qd_metric_inc(metric, 1, labels, 3);
+                }
+            }
+            pn_data_exit(body);
         }
     }
     pn_data_exit(body);
@@ -242,7 +267,7 @@ metric_connection_collector(qd_metric_list_t *metrics, pn_data_t *body)
 }
 
 static void
-metric_collect_add_collector(qd_dispatch_t *dispatch, metric_collect_context_t *parent_ctx, int val, metric_result_parser_t parser)
+metric_collect_add_collector(qd_dispatch_t *dispatch, metric_collect_context_t *parent_ctx, qd_router_entity_type_t entity_type, metric_result_parser_t parser)
 {
     metric_collector_t * ctx = malloc(sizeof(metric_collector_t));
     if (!ctx) {
@@ -253,6 +278,7 @@ metric_collect_add_collector(qd_dispatch_t *dispatch, metric_collect_context_t *
     ctx->field = qd_compose_subfield(0);
     ctx->parser = parser;
     ctx->parent_ctx = parent_ctx;
+    DEQ_ITEM_INIT(ctx);
 
     qd_compose_start_map(ctx->field);
 
@@ -261,11 +287,12 @@ metric_collect_add_collector(qd_dispatch_t *dispatch, metric_collect_context_t *
     qd_parsed_field_t *attribute_names_parsed_field = NULL;
     printf("Created query\n");
 
-    ctx->query = qdr_manage_query(dispatch->router->router_core, ctx, val, attribute_names_parsed_field, ctx->field, metric_query_response_handler);
+    ctx->query = qdr_manage_query(dispatch->router->router_core, ctx, entity_type, attribute_names_parsed_field, ctx->field, metric_query_response_handler);
 
     qdr_query_add_attribute_names(ctx->query);
     qd_compose_insert_string(ctx->field, "results");
     qd_compose_start_list(ctx->field);
+    DEQ_INSERT_TAIL(parent_ctx->collector_list, ctx);
 }
 
 static void
