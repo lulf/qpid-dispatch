@@ -55,8 +55,8 @@ typedef struct metric_collect_context_t metric_collect_context_t;
 static void write_string(qd_buffer_list_t *buffers, const char *str, unsigned long long len);
 static void metric_collect_start(metric_collect_context_t *ctx);
 static void metric_collect_add_collector(qd_dispatch_t *dispatch, metric_collect_context_t *parent_ctx, qd_router_entity_type_t entity_type, metric_result_parser_t parser);
-static void metric_connection_collector(qd_metric_list_t *metrics, pn_data_t *body);
-static qd_metric_label_t map_get_label(pn_data_t *body, const char *key);
+static void metric_connection_collector(qd_metric_list_t *metrics, pn_data_t *body, pn_handle_t attributes, pn_handle_t results);
+//static qd_metric_label_t map_get_label(pn_data_t *body, const char *key);
 static void map_get_entry(pn_data_t *body, const char *key, pn_handle_t *key_handle, pn_handle_t *value_handle);
 static void metric_query_response_handler(void *context, const qd_amqp_error_t *status, bool more);
 static pn_data_t * metric_decode_query_response(qd_composed_field_t *field);
@@ -109,9 +109,6 @@ metric_query_response_handler(void *context, const qd_amqp_error_t *status, bool
     collector->response = body;
     metric_collect_context_t *ctx = collector->parent_ctx;
 
-    size_t count = pn_data_get_map(body);
-
-    pn_data_enter(body);
     pn_handle_t attribute_names_key, attribute_names_value;
     pn_handle_t results_key, results_value;
 
@@ -182,6 +179,7 @@ metric_decode_query_response(qd_composed_field_t *field)
     return body;
 }
 
+#if 0
 static qd_metric_label_t
 map_get_label(pn_data_t *body, const char *key)
 {
@@ -191,13 +189,14 @@ map_get_label(pn_data_t *body, const char *key)
 
     map_get_entry(body, key, &key_handle, &value_handle);
 
-    pn_data_restore(key_handle);
+    pn_data_restore(body, key_handle);
     label.key = pn_data_get_string(body);
 
-    pn_data_restore(value_handle);
+    pn_data_restore(body, value_handle);
     label.value = pn_data_get_string(body);
     return label;
 }
+#endif
 
 static void
 map_get_entry(pn_data_t *body, const char *key, pn_handle_t *key_handle, pn_handle_t *value_handle)
@@ -223,21 +222,29 @@ map_get_entry(pn_data_t *body, const char *key, pn_handle_t *key_handle, pn_hand
     pn_data_exit(body);
 }
 
+typedef struct keyset_t keyset_t;
+
+struct keyset_t {
+    const char *keystr;
+    pn_bytes_t key;
+    size_t keyidx;
+};
+
 static void
 metric_connection_collector(qd_metric_list_t *metrics, pn_data_t *body, pn_handle_t attributes, pn_handle_t results)
 {
-    printf("Dump\n");
-    pn_data_dump(body);
-    printf("End dump\n");
 
-    size_t num_connections = pn_data_get_list(body);
     qd_metric_t *metric = qd_metric("connections", "Number of connections", QD_METRIC_TYPE_GAUGE);
-    printf("Found data type %s for list with %lu entries\n", pn_type_name(pn_data_type(body)), num_connections);
 
+
+    keyset_t keyset[3] = { { .keystr = "container" }, { .keystr = "dir" }, { .keystr = "role" } };
+
+    pn_data_restore(body, attributes);
+    size_t num_connections = pn_data_get_list(body);
+    printf("Found data type %s for list with %lu entries\n", pn_type_name(pn_data_type(body)), num_connections);
     pn_data_enter(body);
-    printf("Found data type on enter %s\n", pn_type_name(pn_data_type(body)));
     for (size_t i = 0; i < num_connections; i++) {
-        if (pn_data_next(body) && pn_data_type(body) == PN_LIST) {
+        if (pn_data_next(body)) {
             size_t keys = pn_data_get_list(body);
             printf("Keys %lu\n", keys);
             pn_data_enter(body);
@@ -246,19 +253,40 @@ metric_connection_collector(qd_metric_list_t *metrics, pn_data_t *body, pn_handl
                     printf("Type %s\n", pn_type_name(pn_data_type(body)));
                     if (pn_data_type(body) == PN_STRING) {
                         pn_bytes_t str = pn_data_get_string(body);
-                        printf("Str: %s\n", str.start);
-
+                        for (int s = 0; s < sizeof(keyset); s++) {
+                            if (strncmp(str.start, keyset[s].keystr, strlen(keyset[s].keystr)) == 0) {
+                                keyset[s].keyidx = k;
+                                keyset[s].key = str;
+                            }
+                        }
                     }
-
-           //         qd_metric_label_t labels[3];
-           //         labels[0] = map_get_label(body, "container");
-           //         labels[1] = map_get_label(body, "dir");
-           //         labels[2] = map_get_label(body, "role");
-           //         printf("Label container: %s\n", labels[0].key.start);
-
-           //         qd_metric_inc(metric, 1, labels, 3);
                 }
             }
+            pn_data_exit(body);
+        }
+    }
+
+    pn_data_restore(body, results);
+    pn_data_enter(body);
+    for (size_t i = 0; i < num_connections; i++) {
+        if (pn_data_next(body)) {
+            qd_metric_label_t labels[3];
+
+            size_t keys = pn_data_get_list(body);
+            printf("Keys %lu\n", keys);
+            pn_data_enter(body);
+            for (size_t k = 0; k < keys; k++) {
+                if (pn_data_next(body)) {
+                    for (int s = 0; s < sizeof(keyset); s++) {
+                        if (keyset[s].keyidx == k) {
+                            pn_bytes_t str = pn_data_get_string(body);
+                            labels[s].key = keyset[s].key;
+                            labels[s].value = str;
+                        }
+                    }
+                }
+            }
+            qd_metric_inc(metric, 1, labels, 3);
             pn_data_exit(body);
         }
     }
