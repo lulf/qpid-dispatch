@@ -22,82 +22,6 @@
 #include "metric_private.h"
 #include <stdio.h>
 
-#define MIN(a, b) (a) < (b) ? (a) : (b)
-
-static void
-write_string(qd_buffer_list_t *buffers, const char *str, unsigned long long len)
-{
-    qd_buffer_t * buf = DEQ_TAIL(*buffers);
-    while (len > 0) {
-        if (buf == NULL) {
-            buf = qd_buffer();
-            DEQ_INSERT_TAIL(*buffers, buf);
-        }
-        unsigned char * p = qd_buffer_cursor(buf);
-        unsigned long long to_copy = MIN(len, qd_buffer_capacity(buf));
-        memcpy(p, str, to_copy);
-        qd_buffer_insert(buf, to_copy);
-        str += to_copy;
-        len -= to_copy;
-        if (len > 0) {
-            buf = qd_buffer();
-            DEQ_INSERT_TAIL(*buffers, buf);
-        }
-    }
-}
-
-typedef enum {
-    METRIC_TYPE_GAUGE = 1,
-    METRIC_TYPE_COUNTER
-} metric_type_t;
-
-static const char *
-type_to_string(metric_type_t type)
-{
-    switch (type) {
-    case METRIC_TYPE_GAUGE:
-        return "gauge";
-    case METRIC_TYPE_COUNTER:
-        return "counter";
-    default:
-        return "unknown";
-    }
-}
-
-static void
-qd_metric_write(qd_metric_t *metric, qd_buffer_list_t *buffers)
-{
-    qd_metric_value_t * value = DEQ_HEAD(metric->values);
-
-    char buf[256];
-    snprintf(buf, sizeof(buf), "# HELP %s %s\n", metric->name, metric->description);
-    write_string(buffers, buf, strlen(buf));
-    snprintf(buf, sizeof(buf), "# TYPE %s %s\n", metric->name, type_to_string(metric->type));
-    write_string(buffers, buf, strlen(buf));
-
-    while (value != NULL) {
-        write_string(buffers, metric->name, strlen(metric->name));
-        if (value->num_labels >= 1 && value->labels[0].key.size > 0 ) {
-            write_string(buffers, "{", 1);
-            for (int i = 0; i < value->num_labels; i++) {
-                write_string(buffers, value->labels[i].key.start, value->labels[i].key.size);
-                write_string(buffers, "=\"", 2);
-                write_string(buffers, value->labels[i].value.start, value->labels[i].value.size);
-                write_string(buffers, "\"", 1);
-                if (i < value->num_labels - 1) {
-                    write_string(buffers, ",", 1);
-                }
-            }
-            write_string(buffers, "}", 1);
-        }
-        write_string(buffers, " ", 1);
-
-        snprintf(buf, sizeof(buf), "%f\n", value->value);
-        write_string(buffers, buf, strlen(buf));
-        value = DEQ_NEXT(value);
-    }
-}
-
 typedef void (*metric_result_parser_t)(qd_metric_list_t *metrics, pn_data_t *body);
 typedef struct metric_collector_t metric_collector_t;
 typedef struct metric_collect_context_t metric_collect_context_t;
@@ -126,6 +50,36 @@ struct metric_collect_context_t {
 };
 
 typedef struct metric_collect_context_t metric_collect_context_t;
+
+#define MIN(a, b) (a) < (b) ? (a) : (b)
+static void write_string(qd_buffer_list_t *buffers, const char *str, unsigned long long len);
+static void metric_collect_start(metric_collect_context_t *ctx);
+static void metric_collect_add_collector(qd_dispatch_t *dispatch, metric_collect_context_t *parent_ctx, int val, metric_result_parser_t parser);
+static void metric_connection_collector(qd_metric_list_t *metrics, pn_data_t *body);
+static qd_metric_label_t map_get_label(pn_data_t *body, const char *key);
+static void metric_query_response_handler(void *context, const qd_amqp_error_t *status, bool more);
+static pn_data_t * metric_decode_query_response(qd_composed_field_t *field);
+static void qd_metric_write(qd_metric_t *metric, qd_buffer_list_t *buffers);
+static size_t flatten_bufs(char * buffer, qd_buffer_list_t *content);
+
+void
+metric_collect(qd_dispatch_t *dispatch, metric_callback_t callback, void *callback_ctx)
+{
+
+    metric_collect_context_t * ctx = malloc(sizeof(metric_collect_context_t));
+    if (!ctx) {
+        return;
+    }
+
+    ctx->completed = 0;
+    ctx->callback = callback;
+    ctx->callback_ctx = callback_ctx;
+    DEQ_INIT(ctx->metric_list);
+    DEQ_INIT(ctx->collector_list);
+
+    metric_collect_add_collector(dispatch, ctx, QD_ROUTER_CONNECTION, metric_connection_collector);
+    metric_collect_start(ctx);
+}
 
 static size_t flatten_bufs(char * buffer, qd_buffer_list_t *content)
 {
@@ -269,7 +223,7 @@ static void
 metric_connection_collector(qd_metric_list_t *metrics, pn_data_t *body)
 {
     size_t num_connections = pn_data_get_list(body);
-    qd_metric_t *metric = qd_metric("connections", "Number of connections", METRIC_TYPE_GAUGE);
+    qd_metric_t *metric = qd_metric("connections", "Number of connections", QD_METRIC_TYPE_GAUGE);
 
     pn_data_enter(body);
     for (size_t i = 0; i < num_connections; i++) {
@@ -324,21 +278,61 @@ metric_collect_start(metric_collect_context_t *ctx)
     }
 }
 
-void
-metric_collect(qd_dispatch_t *dispatch, metric_callback_t callback, void *callback_ctx)
+/**********************************************
+ * Functions for formatting prometheus output *
+ **********************************************/
+static void
+write_string(qd_buffer_list_t *buffers, const char *str, unsigned long long len)
 {
-
-    metric_collect_context_t * ctx = malloc(sizeof(metric_collect_context_t));
-    if (!ctx) {
-        return;
+    qd_buffer_t * buf = DEQ_TAIL(*buffers);
+    while (len > 0) {
+        if (buf == NULL) {
+            buf = qd_buffer();
+            DEQ_INSERT_TAIL(*buffers, buf);
+        }
+        unsigned char * p = qd_buffer_cursor(buf);
+        unsigned long long to_copy = MIN(len, qd_buffer_capacity(buf));
+        memcpy(p, str, to_copy);
+        qd_buffer_insert(buf, to_copy);
+        str += to_copy;
+        len -= to_copy;
+        if (len > 0) {
+            buf = qd_buffer();
+            DEQ_INSERT_TAIL(*buffers, buf);
+        }
     }
+}
 
-    ctx->completed = 0;
-    ctx->callback = callback;
-    ctx->callback_ctx = callback_ctx;
-    DEQ_INIT(ctx->metric_list);
-    DEQ_INIT(ctx->collector_list);
+static void
+qd_metric_write(qd_metric_t *metric, qd_buffer_list_t *buffers)
+{
+    qd_metric_value_t * value = DEQ_HEAD(metric->values);
 
-    metric_collect_add_collector(dispatch, ctx, QD_ROUTER_CONNECTION, metric_connection_collector);
-    metric_collect_start(ctx);
+    char buf[256];
+    snprintf(buf, sizeof(buf), "# HELP %s %s\n", metric->name, metric->description);
+    write_string(buffers, buf, strlen(buf));
+    snprintf(buf, sizeof(buf), "# TYPE %s %s\n", metric->name, qd_metric_type_string(metric->type));
+    write_string(buffers, buf, strlen(buf));
+
+    while (value != NULL) {
+        write_string(buffers, metric->name, strlen(metric->name));
+        if (value->num_labels >= 1 && value->labels[0].key.size > 0 ) {
+            write_string(buffers, "{", 1);
+            for (int i = 0; i < value->num_labels; i++) {
+                write_string(buffers, value->labels[i].key.start, value->labels[i].key.size);
+                write_string(buffers, "=\"", 2);
+                write_string(buffers, value->labels[i].value.start, value->labels[i].value.size);
+                write_string(buffers, "\"", 1);
+                if (i < value->num_labels - 1) {
+                    write_string(buffers, ",", 1);
+                }
+            }
+            write_string(buffers, "}", 1);
+        }
+        write_string(buffers, " ", 1);
+
+        snprintf(buf, sizeof(buf), "%f\n", value->value);
+        write_string(buffers, buf, strlen(buf));
+        value = DEQ_NEXT(value);
+    }
 }

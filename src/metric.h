@@ -34,6 +34,7 @@ struct qd_metric_label_t {
     pn_bytes_t value;
 };
 
+const char * qd_metric_type_string(qd_metric_type_t type);
 qd_metric_t * qd_metric(const char *name, const char *description, qd_metric_type_t type);
 void          qd_metric_free(qd_metric_t *metric);
 void          qd_metric_inc(qd_metric_t *metric, double increment, const qd_metric_label_t labels[], unsigned int num_labels);

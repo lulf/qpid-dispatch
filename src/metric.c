@@ -29,6 +29,19 @@ ALLOC_DEFINE(qd_metric_value_t);
 
 #define MIN(a, b) (a) < (b) ? (a) : (b)
 
+const char *
+qd_metric_type_string(qd_metric_type_t type)
+{
+    switch (type) {
+    case QD_METRIC_TYPE_GAUGE:
+        return "gauge";
+    case QD_METRIC_TYPE_COUNTER:
+        return "counter";
+    default:
+        return "unknown";
+    }
+}
+
 static void
 qd_metric_insert(qd_metric_t *metric, double initial_value, const qd_metric_label_t labels[], unsigned int num_labels)
 {
