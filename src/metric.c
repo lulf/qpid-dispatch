@@ -40,8 +40,7 @@ qd_metric_insert(qd_metric_t *metric, double initial_value, const qd_metric_labe
     value->labels = malloc(sizeof(qd_metric_label_t) * num_labels);
     memset(value->labels, 0, sizeof(qd_metric_label_t) * num_labels);
     for (int i = 0; i < num_labels; i++) {
-        value->labels[i].key = strdup(labels[i].key);
-        value->labels[i].value = strdup(labels[i].value);
+        value->labels[i] = labels[i];
     }
     DEQ_INSERT_TAIL(metric->values, value);
 }
@@ -69,11 +68,6 @@ qd_metric_free(qd_metric_t *metric)
 
     qd_metric_value_t * value = DEQ_HEAD(metric->values);
     while (value != NULL) {
-        for (int i = 0; i < value->num_labels; i++) {
-            // Casting is OK, we have allocated them
-            free((char *)value->labels[i].key);
-            free((char *)value->labels[i].value);
-        }
         if (value->num_labels > 0) {
             free(value->labels);
         }
@@ -89,12 +83,12 @@ qd_metric_label_cmp(const qd_metric_label_t *la, const qd_metric_label_t *lb, un
 {
     int retval = 0;
     for (int i = 0; i < num_labels; i++) {
-        retval = strncmp(la[i].key, lb[i].key, MIN(strlen(la[i].key), strlen(lb[i].key)));
+        retval = strncmp(la[i].key.start, lb[i].key.start, MIN(la[i].key.size, lb[i].key.size));
         if (retval != 0) {
             return retval;
         }
 
-        retval = strncmp(la[i].value, lb[i].value, MIN(strlen(la[i].value), strlen(lb[i].value)));
+        retval = strncmp(la[i].value.start, lb[i].value.start, MIN(la[i].value.size, lb[i].value.size));
         if (retval != 0) {
             return retval;
         }

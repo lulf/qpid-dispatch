@@ -1,5 +1,5 @@
-#ifndef __metric_exporter_private_h__
-#define __metric_exporter_private_h__ 1
+#ifndef __metric_collector_h__
+#define __metric_collector_h__ 1
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -23,5 +23,5 @@
 #include <qpid/dispatch/buffer.h>
 
 typedef void(*metric_callback_t)(qd_buffer_list_t data, void *context);
-void metric_export_prometheus(qd_dispatch_t *dispatch, metric_callback_t callback, void *callback_ctx);
+void metric_collect(qd_dispatch_t *dispatch, metric_callback_t callback, void *callback_ctx);
 #endif

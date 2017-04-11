@@ -33,7 +33,7 @@
 #include "http.h"
 #include "server_private.h"
 #include "router_core/router_core_private.h"
-#include "metric_exporter_private.h"
+#include "metric_collector.h"
 #include "config.h"
 
 static qd_log_source_t* http_log;
@@ -157,7 +157,7 @@ static int callback_http(struct lws *wsi, enum lws_callback_reasons reason,
         request_uri = (char *) in;
         if (strcmp(request_uri, "/metrics/") == 0) {
             qd_http_server_t *server = wsi_http_server(wsi);
-            metric_export_prometheus(server->dispatch, metric_callback, (void *)wsi);
+            metric_collect(server->dispatch, metric_callback, (void *)wsi);
         } else {
             lws_return_http_status(wsi, HTTP_STATUS_NOT_FOUND, (char*)in);
             retval = -1;
